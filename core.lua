@@ -298,14 +298,22 @@ function Core.AutoRespawn()
     end
 end
 
+-- [[ PLAYER MENU FUNCTIONS ]]
+
 -- WalkSpeed Manager
 Core.SetWalkSpeed = function(speed)
-    local character = game.Players.LocalPlayer.Character
+    local character = LocalPlayer.Character
     if character and character:FindFirstChild("Humanoid") then
         character.Humanoid.WalkSpeed = speed
+        Core.Config.PlayerMenu.WalkSpeed.Current = speed
         return true
     end
     return false
+end
+
+-- Restore default walkspeed
+Core.ResetWalkSpeed = function()
+    return Core.SetWalkSpeed(Core.Config.PlayerMenu.WalkSpeed.Default)
 end
 
 -- Infinite Jump Manager
@@ -316,10 +324,9 @@ Core.InfiniteJump = {
     Enable = function()
         if Core.InfiniteJump.Enabled then return end
         Core.InfiniteJump.Enabled = true
+        Core.Config.PlayerMenu.InfiniteJump = true
         
         local UserInputService = game:GetService("UserInputService")
-        local Players = game:GetService("Players")
-        local LocalPlayer = Players.LocalPlayer
         
         Core.InfiniteJump.Connection = UserInputService.JumpRequest:Connect(function()
             if Core.InfiniteJump.Enabled then
@@ -333,6 +340,8 @@ Core.InfiniteJump = {
     
     Disable = function()
         Core.InfiniteJump.Enabled = false
+        Core.Config.PlayerMenu.InfiniteJump = false
+        
         if Core.InfiniteJump.Connection then
             Core.InfiniteJump.Connection:Disconnect()
             Core.InfiniteJump.Connection = nil
@@ -343,25 +352,27 @@ Core.InfiniteJump = {
 -- Full Bright Manager
 Core.FullBright = {
     Enabled = false,
-    OriginalSettings = {},
     
     Enable = function()
         if Core.FullBright.Enabled then return end
         Core.FullBright.Enabled = true
+        Core.Config.PlayerMenu.FullBright = true
         
         local Lighting = game:GetService("Lighting")
         
-        -- Save original settings
-        Core.FullBright.OriginalSettings = {
-            Brightness = Lighting.Brightness,
-            Ambient = Lighting.Ambient,
-            OutdoorAmbient = Lighting.OutdoorAmbient,
-            ClockTime = Lighting.ClockTime,
-            FogEnd = Lighting.FogEnd
-        }
+        -- Save original settings (hanya sekali)
+        if not Core.Config.PlayerMenu.OriginalLighting.Brightness then
+            Core.Config.PlayerMenu.OriginalLighting = {
+                Brightness = Lighting.Brightness,
+                Ambient = Lighting.Ambient,
+                OutdoorAmbient = Lighting.OutdoorAmbient,
+                ClockTime = Lighting.ClockTime,
+                FogEnd = Lighting.FogEnd
+            }
+        end
         
         -- Apply full bright
-        Lighting.Brightness = 2
+        Lighting.Brightness = Core.Config.PlayerMenu.FullBrightIntensity
         Lighting.Ambient = Color3.fromRGB(255, 255, 255)
         Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
         Lighting.ClockTime = 14
@@ -369,36 +380,42 @@ Core.FullBright = {
         
         -- Disable visual effects
         for _, v in pairs(Lighting:GetChildren()) do
-            if v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or 
-               v:IsA("ColorCorrectionEffect") or v:IsA("BloomEffect") or 
-               v:IsA("Atmosphere") then
-                v.Enabled = false
-            end
+            pcall(function()
+                if v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or 
+                   v:IsA("ColorCorrectionEffect") or v:IsA("BloomEffect") or 
+                   v:IsA("Atmosphere") then
+                    v.Enabled = false
+                end
+            end)
         end
     end,
     
     Disable = function()
         if not Core.FullBright.Enabled then return end
         Core.FullBright.Enabled = false
+        Core.Config.PlayerMenu.FullBright = false
         
         local Lighting = game:GetService("Lighting")
+        local original = Core.Config.PlayerMenu.OriginalLighting
         
         -- Restore original settings
-        if Core.FullBright.OriginalSettings.Brightness then
-            Lighting.Brightness = Core.FullBright.OriginalSettings.Brightness
-            Lighting.Ambient = Core.FullBright.OriginalSettings.Ambient
-            Lighting.OutdoorAmbient = Core.FullBright.OriginalSettings.OutdoorAmbient
-            Lighting.ClockTime = Core.FullBright.OriginalSettings.ClockTime
-            Lighting.FogEnd = Core.FullBright.OriginalSettings.FogEnd
+        if original.Brightness then
+            Lighting.Brightness = original.Brightness
+            Lighting.Ambient = original.Ambient
+            Lighting.OutdoorAmbient = original.OutdoorAmbient
+            Lighting.ClockTime = original.ClockTime
+            Lighting.FogEnd = original.FogEnd
         end
         
         -- Re-enable visual effects
         for _, v in pairs(Lighting:GetChildren()) do
-            if v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or 
-               v:IsA("ColorCorrectionEffect") or v:IsA("BloomEffect") or 
-               v:IsA("Atmosphere") then
-                v.Enabled = true
-            end
+            pcall(function()
+                if v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or 
+                   v:IsA("ColorCorrectionEffect") or v:IsA("BloomEffect") or 
+                   v:IsA("Atmosphere") then
+                    v.Enabled = true
+                end
+            end)
         end
     end
 }
@@ -410,9 +427,9 @@ Core.FPSBooster = {
     Enable = function()
         if Core.FPSBooster.Enabled then return end
         Core.FPSBooster.Enabled = true
+        Core.Config.PlayerMenu.FPSBooster = true
         
         local decalsyeeted = true
-        local game = game
         local workspace = game.Workspace
         local lighting = game.Lighting
         local terrain = workspace.Terrain
@@ -469,8 +486,37 @@ Core.FPSBooster = {
     
     Disable = function()
         Core.FPSBooster.Enabled = false
+        Core.Config.PlayerMenu.FPSBooster = false
         -- Note: Graphics can't be fully restored without rejoining
     end
 }
+
+-- [[ UTILITY FUNCTIONS ]]
+
+-- Reset all player menu features
+Core.ResetPlayerMenu = function()
+    Core.InfiniteJump.Disable()
+    Core.FullBright.Disable()
+    Core.FPSBooster.Disable()
+    Core.ResetWalkSpeed()
+    
+    if Core.WindUI then
+        Core.WindUI:Notify({
+            Title = "Reset", 
+            Content = "All player features reset", 
+            Duration = 2
+        })
+    end
+end
+
+-- Get current player menu status
+Core.GetPlayerMenuStatus = function()
+    return {
+        WalkSpeed = Core.Config.PlayerMenu.WalkSpeed.Current,
+        InfiniteJump = Core.Config.PlayerMenu.InfiniteJump,
+        FullBright = Core.Config.PlayerMenu.FullBright,
+        FPSBooster = Core.Config.PlayerMenu.FPSBooster
+    }
+end
 
 return Core
