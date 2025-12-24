@@ -41,8 +41,17 @@ Config.PlayerMenu = {
     FullBright = false,
     FPSBooster = false,
     
-    -- Advanced Settings (optional)
+    -- Advanced Settings
     FullBrightIntensity = 2, -- Brightness level (1-3)
-    FPSBoosterLevel = "High" -- "Low", "Medium", "High"
+    FPSBoosterLevel = "High", -- "Low", "Medium", "High"
+    
+    -- Original Lighting Settings (untuk restore)
+    OriginalLighting = {
+        Brightness = nil,
+        Ambient = nil,
+        OutdoorAmbient = nil,
+        ClockTime = nil,
+        FogEnd = nil
+    }
 }
 return Config
