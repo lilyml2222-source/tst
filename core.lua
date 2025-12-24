@@ -229,4 +229,72 @@ function Core.GetRepoURL(trackName)
     return string.format("https://raw.githubusercontent.com/%s/%s/%s/", Config.GitHubUser, repoName, Config.Branch)
 end
 
+-- [[ GOD MODE FUNCTIONS ]]
+local GodModeConnection = nil
+local OriginalHealth = nil
+
+function Core.EnableGodMode()
+    local character = game.Players.LocalPlayer.Character
+    if not character then return end
+    
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+    
+    -- Simpan health asli
+    OriginalHealth = humanoid.MaxHealth
+    
+    -- Set health jadi infinite
+    humanoid.MaxHealth = math.huge
+    humanoid.Health = math.huge
+    
+    -- Monitor terus health agar tetap infinite
+    if GodModeConnection then GodModeConnection:Disconnect() end
+    GodModeConnection = humanoid.HealthChanged:Connect(function()
+        if Core.Config.godMode then
+            humanoid.Health = math.huge
+        end
+    end)
+    
+    print("✅ God Mode Enabled")
+end
+
+function Core.DisableGodMode()
+    local character = game.Players.LocalPlayer.Character
+    if not character then return end
+    
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+    
+    -- Disconnect connection
+    if GodModeConnection then
+        GodModeConnection:Disconnect()
+        GodModeConnection = nil
+    end
+    
+    -- Restore health asli
+    if OriginalHealth then
+        humanoid.MaxHealth = OriginalHealth
+        humanoid.Health = OriginalHealth
+    else
+        humanoid.MaxHealth = 100
+        humanoid.Health = 100
+    end
+    
+    print("❌ God Mode Disabled")
+end
+
+-- [[ AUTO RESPAWN FUNCTION ]]
+function Core.AutoRespawn()
+    if not Core.Config.autoRespawn then return end
+    
+    local character = game.Players.LocalPlayer.Character
+    if character then
+        local humanoid = character:FindFirstChildOfClass("Humanoid")
+        if humanoid and humanoid.Health <= 0 then
+            wait(0.5)
+            game.Players.LocalPlayer.Character:BreakJoints()
+            wait(game.Players.RespawnTime + 0.5)
+        end
+    end
+end
 return Core
