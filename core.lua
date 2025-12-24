@@ -297,4 +297,180 @@ function Core.AutoRespawn()
         end
     end
 end
+
+-- WalkSpeed Manager
+Core.SetWalkSpeed = function(speed)
+    local character = game.Players.LocalPlayer.Character
+    if character and character:FindFirstChild("Humanoid") then
+        character.Humanoid.WalkSpeed = speed
+        return true
+    end
+    return false
+end
+
+-- Infinite Jump Manager
+Core.InfiniteJump = {
+    Connection = nil,
+    Enabled = false,
+    
+    Enable = function()
+        if Core.InfiniteJump.Enabled then return end
+        Core.InfiniteJump.Enabled = true
+        
+        local UserInputService = game:GetService("UserInputService")
+        local Players = game:GetService("Players")
+        local LocalPlayer = Players.LocalPlayer
+        
+        Core.InfiniteJump.Connection = UserInputService.JumpRequest:Connect(function()
+            if Core.InfiniteJump.Enabled then
+                local character = LocalPlayer.Character
+                if character and character:FindFirstChild("Humanoid") then
+                    character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                end
+            end
+        end)
+    end,
+    
+    Disable = function()
+        Core.InfiniteJump.Enabled = false
+        if Core.InfiniteJump.Connection then
+            Core.InfiniteJump.Connection:Disconnect()
+            Core.InfiniteJump.Connection = nil
+        end
+    end
+}
+
+-- Full Bright Manager
+Core.FullBright = {
+    Enabled = false,
+    OriginalSettings = {},
+    
+    Enable = function()
+        if Core.FullBright.Enabled then return end
+        Core.FullBright.Enabled = true
+        
+        local Lighting = game:GetService("Lighting")
+        
+        -- Save original settings
+        Core.FullBright.OriginalSettings = {
+            Brightness = Lighting.Brightness,
+            Ambient = Lighting.Ambient,
+            OutdoorAmbient = Lighting.OutdoorAmbient,
+            ClockTime = Lighting.ClockTime,
+            FogEnd = Lighting.FogEnd
+        }
+        
+        -- Apply full bright
+        Lighting.Brightness = 2
+        Lighting.Ambient = Color3.fromRGB(255, 255, 255)
+        Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+        Lighting.ClockTime = 14
+        Lighting.FogEnd = 100000
+        
+        -- Disable visual effects
+        for _, v in pairs(Lighting:GetChildren()) do
+            if v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or 
+               v:IsA("ColorCorrectionEffect") or v:IsA("BloomEffect") or 
+               v:IsA("Atmosphere") then
+                v.Enabled = false
+            end
+        end
+    end,
+    
+    Disable = function()
+        if not Core.FullBright.Enabled then return end
+        Core.FullBright.Enabled = false
+        
+        local Lighting = game:GetService("Lighting")
+        
+        -- Restore original settings
+        if Core.FullBright.OriginalSettings.Brightness then
+            Lighting.Brightness = Core.FullBright.OriginalSettings.Brightness
+            Lighting.Ambient = Core.FullBright.OriginalSettings.Ambient
+            Lighting.OutdoorAmbient = Core.FullBright.OriginalSettings.OutdoorAmbient
+            Lighting.ClockTime = Core.FullBright.OriginalSettings.ClockTime
+            Lighting.FogEnd = Core.FullBright.OriginalSettings.FogEnd
+        end
+        
+        -- Re-enable visual effects
+        for _, v in pairs(Lighting:GetChildren()) do
+            if v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or 
+               v:IsA("ColorCorrectionEffect") or v:IsA("BloomEffect") or 
+               v:IsA("Atmosphere") then
+                v.Enabled = true
+            end
+        end
+    end
+}
+
+-- FPS Booster Manager
+Core.FPSBooster = {
+    Enabled = false,
+    
+    Enable = function()
+        if Core.FPSBooster.Enabled then return end
+        Core.FPSBooster.Enabled = true
+        
+        local decalsyeeted = true
+        local game = game
+        local workspace = game.Workspace
+        local lighting = game.Lighting
+        local terrain = workspace.Terrain
+        
+        -- Apply FPS boost settings
+        pcall(function()
+            sethiddenproperty(lighting, "Technology", Enum.Technology.Compatibility)
+            sethiddenproperty(terrain, "Decoration", false)
+        end)
+        
+        terrain.WaterWaveSize = 0
+        terrain.WaterWaveSpeed = 0
+        terrain.WaterReflectance = 0
+        terrain.WaterTransparency = 0
+        lighting.GlobalShadows = false
+        lighting.FogEnd = 9e9
+        lighting.Brightness = 0
+        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+        
+        -- Optimize all parts and effects
+        for _, v in pairs(game:GetDescendants()) do
+            pcall(function()
+                if v:IsA("Part") or v:IsA("Union") or v:IsA("CornerWedgePart") or v:IsA("TrussPart") then
+                    v.Material = Enum.Material.Plastic
+                    v.Reflectance = 0
+                elseif v:IsA("Decal") or v:IsA("Texture") and decalsyeeted then
+                    v.Transparency = 1
+                elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
+                    v.Lifetime = NumberRange.new(0)
+                elseif v:IsA("Explosion") then
+                    v.BlastPressure = 1
+                    v.BlastRadius = 1
+                elseif v:IsA("Fire") or v:IsA("SpotLight") or v:IsA("Smoke") or v:IsA("Sparkles") then
+                    v.Enabled = false
+                elseif v:IsA("MeshPart") then
+                    v.Material = Enum.Material.Plastic
+                    v.Reflectance = 0
+                    v.TextureID = ""
+                end
+            end)
+        end
+        
+        -- Disable lighting effects
+        for _, e in pairs(lighting:GetChildren()) do
+            pcall(function()
+                if e:IsA("BlurEffect") or e:IsA("SunRaysEffect") or 
+                   e:IsA("ColorCorrectionEffect") or e:IsA("BloomEffect") or 
+                   e:IsA("DepthOfFieldEffect") then
+                    e.Enabled = false
+                end
+            end)
+        end
+    end,
+    
+    Disable = function()
+        Core.FPSBooster.Enabled = false
+        -- Note: Graphics can't be fully restored without rejoining
+    end
+}
+
 return Core
