@@ -26,4 +26,23 @@ Config.FlipOffset = 0
 Config.SpeedMultiplier = 1
 Config.godMode = false
 Config.autoRespawn = false
+-- [[ PLAYER MENU CONFIGURATION ]]
+Config.PlayerMenu = {
+    -- WalkSpeed Settings
+    WalkSpeed = {
+        Current = 16,
+        Default = 16,
+        Min = 16,
+        Max = 200
+    },
+    
+    -- Feature States
+    InfiniteJump = false,
+    FullBright = false,
+    FPSBooster = false,
+    
+    -- Advanced Settings (optional)
+    FullBrightIntensity = 2, -- Brightness level (1-3)
+    FPSBoosterLevel = "High" -- "Low", "Medium", "High"
+}
 return Config
