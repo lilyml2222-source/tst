@@ -24,5 +24,6 @@ Config.END_CP = 1000
 Config.CurrentRepoURL = ""
 Config.FlipOffset = 0
 Config.SpeedMultiplier = 1
-
+Config.godMode = false
+Config.autoRespawn = false
 return Config
