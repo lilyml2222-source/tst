@@ -705,4 +705,80 @@ LocalPlayer.CharacterAdded:Connect(function()
     end
 end)
 
+-- [[ SKYBOX FUNCTIONS ]]
+local OriginalSky = nil
+local CurrentSkybox = nil
+
+function Core.ApplySkybox(skyName)
+    local Lighting = game:GetService("Lighting")
+    local preset = Config.Skybox.Presets[skyName]
+    
+    if not preset then
+        warn("Sky preset not found: " .. skyName)
+        return false
+    end
+    
+    -- Simpan original sky jika belum
+    if not OriginalSky then
+        local existingSky = Lighting:FindFirstChildOfClass("Sky")
+        if existingSky then
+            OriginalSky = existingSky:Clone()
+        end
+    end
+    
+    -- Hapus skybox yang ada
+    Core.RemoveSkybox()
+    
+    -- Buat skybox baru
+    local sky = Instance.new("Sky")
+    sky.Name = "CustomSkybox"
+    sky.SkyboxBk = preset.SkyboxBk
+    sky.SkyboxDn = preset.SkyboxDn
+    sky.SkyboxFt = preset.SkyboxFt
+    sky.SkyboxLf = preset.SkyboxLf
+    sky.SkyboxRt = preset.SkyboxRt
+    sky.SkyboxUp = preset.SkyboxUp
+    sky.Parent = Lighting
+    
+    CurrentSkybox = sky
+    Config.Skybox.Current = skyName
+    Config.Skybox.Active = true
+    
+    return true
+end
+
+function Core.RemoveSkybox()
+    local Lighting = game:GetService("Lighting")
+    
+    -- Hapus custom skybox
+    local customSky = Lighting:FindFirstChild("CustomSkybox")
+    if customSky then
+        customSky:Destroy()
+    end
+    
+    CurrentSkybox = nil
+    Config.Skybox.Current = "None"
+    Config.Skybox.Active = false
+    
+    -- Restore original sky jika ada
+    if OriginalSky then
+        local existingSky = Lighting:FindFirstChildOfClass("Sky")
+        if existingSky then
+            existingSky:Destroy()
+        end
+        local restoredSky = OriginalSky:Clone()
+        restoredSky.Parent = Lighting
+    end
+    
+    return true
+end
+
+-- Reset skybox saat respawn
+game:GetService("Players").LocalPlayer.CharacterAdded:Connect(function()
+    if Config.Skybox.Active then
+        task.wait(0.5)
+        Core.ApplySkybox(Config.Skybox.Current)
+    end
+end)
+
 return Core
