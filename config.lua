@@ -152,5 +152,50 @@ function Config:SetPreset(name)
         return self.Presets[name]
     end
 end
-
+Skybox = {
+    Current = "None",
+    Active = false,
+    Presets = {
+        ["SKY 1"] = {
+            SkyboxBk="rbxassetid://570557514",
+            SkyboxDn="rbxassetid://570557775",
+            SkyboxFt="rbxassetid://570557559",
+            SkyboxLf="rbxassetid://570557620",
+            SkyboxRt="rbxassetid://570557672",
+            SkyboxUp="rbxassetid://570557727"
+        },
+        ["SKY 2"] = {
+            SkyboxBk = "rbxassetid://87654321",
+            SkyboxDn = "rbxassetid://87654321",
+            SkyboxFt = "rbxassetid://87654321",
+            SkyboxLf = "rbxassetid://87654321",
+            SkyboxRt = "rbxassetid://87654321",
+            SkyboxUp = "rbxassetid://87654321"
+        },
+        ["SKY 3"] = {
+            SkyboxBk = "rbxassetid://11223344",
+            SkyboxDn = "rbxassetid://11223344",
+            SkyboxFt = "rbxassetid://11223344",
+            SkyboxLf = "rbxassetid://11223344",
+            SkyboxRt = "rbxassetid://11223344",
+            SkyboxUp = "rbxassetid://11223344"
+        },
+        ["SKY 4"] = {
+            SkyboxBk = "rbxassetid://99887766",
+            SkyboxDn = "rbxassetid://99887766",
+            SkyboxFt = "rbxassetid://99887766",
+            SkyboxLf = "rbxassetid://99887766",
+            SkyboxRt = "rbxassetid://99887766",
+            SkyboxUp = "rbxassetid://99887766"
+        },
+        ["SKY 5"] = {
+            SkyboxBk = "rbxassetid://55443322",
+            SkyboxDn = "rbxassetid://55443322",
+            SkyboxFt = "rbxassetid://55443322",
+            SkyboxLf = "rbxassetid://55443322",
+            SkyboxRt = "rbxassetid://55443322",
+            SkyboxUp = "rbxassetid://55443322"
+        }
+    }
+}
 return Config
