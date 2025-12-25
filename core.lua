@@ -519,4 +519,190 @@ Core.GetPlayerMenuStatus = function()
     }
 end
 
+-- =========================
+-- SERVICES
+-- =========================
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- =========================
+-- INTERNAL STATE
+-- =========================
+Core.Controller = {
+    Tracks = {},
+    Connections = {},
+    State = "Idle",
+    Preset = nil,
+    IsDefault = false
+}
+
+-- =========================
+-- UTIL
+-- =========================
+local function stopAllTracks()
+    for _, track in pairs(Core.Controller.Tracks) do
+        pcall(function()
+            track:Stop(0.15)
+            track:Destroy()
+        end)
+    end
+    Core.Controller.Tracks = {}
+end
+
+local function disconnectAll()
+    for _, c in pairs(Core.Controller.Connections) do
+        pcall(function() c:Disconnect() end)
+    end
+    Core.Controller.Connections = {}
+end
+
+local function cleanup()
+    stopAllTracks()
+    disconnectAll()
+    Core.Controller.State = "Idle"
+end
+
+-- =========================
+-- CHARACTER / HUMANOID
+-- =========================
+local function getCharacter()
+    return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+end
+
+local function getHumanoid(char)
+    return char:WaitForChild("Humanoid")
+end
+
+local function getAnimator(humanoid)
+    return humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
+end
+
+-- =========================
+-- DEFAULT RESTORE
+-- =========================
+function Core.RestoreDefault()
+    cleanup()
+    Core.Controller.Preset = nil
+    Core.Controller.IsDefault = true
+
+    local char = getCharacter()
+    local humanoid = getHumanoid(char)
+
+    -- stop all custom tracks
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if animator then
+        for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+            pcall(function()
+                track:Stop(0)
+                track:Destroy()
+            end)
+        end
+    end
+
+    -- restore Animate script
+    local animate = char:FindFirstChild("Animate")
+    if not animate then
+        local defaultAnimate = Players:GetHumanoidDescriptionFromUserId(LocalPlayer.UserId)
+        humanoid:ApplyDescription(defaultAnimate)
+    end
+end
+
+-- =========================
+-- APPLY PRESET
+-- =========================
+function Core.ApplyPreset(preset)
+    if not preset then return end
+
+    -- DEFAULT
+    if preset.__DEFAULT then
+        Core.RestoreDefault()
+        return
+    end
+
+    cleanup()
+
+    Core.Controller.Preset = preset
+    Core.Controller.IsDefault = false
+
+    local char = getCharacter()
+    local humanoid = getHumanoid(char)
+    local root = char:WaitForChild("HumanoidRootPart")
+    local animator = getAnimator(humanoid)
+
+    -- remove Roblox Animate
+    local animate = char:FindFirstChild("Animate")
+    if animate then animate:Destroy() end
+
+    -- =========================
+    -- LOAD TRACK
+    -- =========================
+    local function load(id)
+        if not id then return nil end
+        local anim = Instance.new("Animation")
+        anim.AnimationId = id
+        local track = animator:LoadAnimation(anim)
+        track.Priority = Enum.AnimationPriority.Movement
+        return track
+    end
+
+    Core.Controller.Tracks = {
+        Idle = load(preset.Idle),
+        Walk = load(preset.Walk),
+        Run  = load(preset.Run),
+        Jump = load(preset.Jump),
+        Fall = load(preset.Fall)
+    }
+
+    if Core.Controller.Tracks.Idle then
+        Core.Controller.Tracks.Idle:Play(0.2)
+        Core.Controller.State = "Idle"
+    end
+
+    -- =========================
+    -- STATE LOOP (ANTI BUG)
+    -- =========================
+    Core.Controller.Connections.Heartbeat =
+        RunService.Heartbeat:Connect(function()
+            if humanoid.Health <= 0 then return end
+
+            local velocity = Vector3.new(root.Velocity.X, 0, root.Velocity.Z).Magnitude
+            local state = humanoid:GetState()
+
+            local function switch(name)
+                if Core.Controller.State == name then return end
+                for k, t in pairs(Core.Controller.Tracks) do
+                    if k ~= name and t then t:Stop(0.15) end
+                end
+                if Core.Controller.Tracks[name] then
+                    Core.Controller.Tracks[name]:Play(0.15)
+                    Core.Controller.State = name
+                end
+            end
+
+            if state == Enum.HumanoidStateType.Jumping then
+                switch("Jump")
+            elseif state == Enum.HumanoidStateType.Freefall then
+                switch("Fall")
+            elseif velocity > 14 then
+                switch("Run")
+            elseif velocity > 1 then
+                switch("Walk")
+            else
+                switch("Idle")
+            end
+        end)
+end
+
+-- =========================
+-- RESPAWN SAFE
+-- =========================
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1)
+    if Core.Controller.Preset then
+        Core.ApplyPreset(Core.Controller.Preset)
+    end
+end)
+
 return Core
