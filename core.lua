@@ -119,10 +119,20 @@ function Core.RunPlayback()
     local Hum = Char:FindFirstChild("Humanoid")
     local Root = Char:FindFirstChild("HumanoidRootPart")
 
+    -- Auto-enable God Mode jika Loop aktif
+    if Config.isLooping and Config.godMode then
+        Core.EnableGodMode()
+    end
+
     while Config.isPlaying do
         Root.Anchored = false
         Hum.PlatformStand = false
         Hum.AutoRotate = false
+        
+        -- Maintain God Mode selama playback
+        if Config.godMode and Hum.Health < math.huge then
+            Hum.Health = math.huge
+        end
         
         for i = Config.SavedCP, #Config.TASDataCache do
             if not Config.isPlaying then break end
@@ -136,6 +146,11 @@ function Core.RunPlayback()
                 local frame = data[f]
                 
                 if not Char or not Root then Config.isPlaying = false break end
+
+                -- Maintain God Mode di setiap frame
+                if Config.godMode and Hum.Health < math.huge then
+                    Hum.Health = math.huge
+                end
 
                 -- Deteksi State Climbing
                 local isClimbing = false
@@ -226,16 +241,38 @@ function Core.RunPlayback()
             if Config.isLooping then
                 Config.SavedCP = 0
                 Config.SavedFrame = 1
+                -- Notifikasi loop restart
+                if Core.WindUI then
+                    Core.WindUI:Notify({
+                        Title="Loop Restart", 
+                        Content="Playback restarting...", 
+                        Duration=1
+                    })
+                end
             else
                 Config.isPlaying = false
                 Config.SavedCP = 0
                 Config.SavedFrame = 1
                 Core.ResetCharacter()
+                -- Notifikasi selesai
+                if Core.WindUI then
+                    Core.WindUI:Notify({
+                        Title="Playback Finished", 
+                        Content="Playback completed!", 
+                        Duration=2
+                    })
+                end
                 break
             end
         else
             break
         end
+    end
+    
+    -- Reset God Mode jika tidak loop
+    if not Config.isLooping and Config.godMode then
+        Core.DisableGodMode()
+        Config.godMode = false
     end
 end
 
