@@ -109,5 +109,54 @@ end
 -- ================= GOD MODE (OPTIONAL) ================= function Core.EnableGodMode() if Hum then Hum.MaxHealth = math.huge Hum.Health = math.huge end end
 
 function Core.DisableGodMode() if Hum then Hum.MaxHealth = 100 Hum.Health = math.clamp(Hum.Health, 0, 100) end end
+        return track
+    end
 
+    Core.Controller.Tracks = {
+        Idle = load(preset.Idle),
+        Walk = load(preset.Walk),
+        Run  = load(preset.Run),
+        Jump = load(preset.Jump),
+        Fall = load(preset.Fall)
+    }
+
+    if Core.Controller.Tracks.Idle then
+        Core.Controller.Tracks.Idle:Play(0.2)
+        Core.Controller.State = "Idle"
+    end
+
+    -- =========================
+    -- STATE LOOP (ANTI BUG)
+    -- =========================
+    Core.Controller.Connections.Heartbeat =
+        RunService.Heartbeat:Connect(function()
+            if humanoid.Health <= 0 then return end
+
+            local velocity = Vector3.new(root.Velocity.X, 0, root.Velocity.Z).Magnitude
+            local state = humanoid:GetState()
+
+            local function switch(name)
+                if Core.Controller.State == name then return end
+                for k, t in pairs(Core.Controller.Tracks) do
+                    if k ~= name and t then t:Stop(0.15) end
+                end
+                if Core.Controller.Tracks[name] then
+                    Core.Controller.Tracks[name]:Play(0.15)
+                    Core.Controller.State = name
+                end
+            end
+
+            if state == Enum.HumanoidStateType.Jumping then
+                switch("Jump")
+            elseif state == Enum.HumanoidStateType.Freefall then
+                switch("Fall")
+            elseif velocity > 14 then
+                switch("Run")
+            elseif velocity > 1 then
+                switch("Walk")
+            else
+                switch("Idle")
+            end
+        end)
+end
 return Core
