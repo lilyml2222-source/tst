@@ -62,7 +62,9 @@ function Core.WalkToTarget(targetPos)
     local Char = LocalPlayer.Character
     local Hum = Char:FindFirstChild("Humanoid")
     local Root = Char:FindFirstChild("HumanoidRootPart")
-    
+   if hum then
+        hum.WalkSpeed = 16 * Config.SpeedMultiplier  -- Sinkronkan dengan speed multiplier
+    end 
     Hum.AutoRotate = true
     Hum.PlatformStand = false
     Root.Anchored = false
