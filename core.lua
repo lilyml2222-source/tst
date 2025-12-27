@@ -1,3 +1,4 @@
+
 -- CORE.LUA - Main Logic Functions (FIXED & OPTIMIZED)
 local Core = {}
 
@@ -69,17 +70,13 @@ function Core.WalkToTarget(targetPos)
     
     if not Hum or not Root then return end
     
-    -- ✅ FIX: Sync WalkSpeed dengan SpeedMultiplier
-    if Hum then
-        Hum.WalkSpeed = 16 * Config.SpeedMultiplier
-    end
-    
     Hum.AutoRotate = true
     Hum.PlatformStand = false
     Root.Anchored = false
     
     local oldSpeed = Hum.WalkSpeed
-    Hum.WalkSpeed = 60
+    -- ✅ Gunakan speed multiplier untuk walk to target
+    Hum.WalkSpeed = 60 * (Config.SpeedMultiplier or 1)
     
     while Config.isPlaying do
         local dist = (Root.Position - targetPos).Magnitude
@@ -282,90 +279,6 @@ function Core.RunPlayback()
         Hum.WalkSpeed = 16
     end
 end
-                -- Deteksi State Climbing
-                local isClimbing = false
-                if frame.STA then
-                    local s = frame.STA
-                    if s == "Climbing" then
-                        isClimbing = true
-                    end
-                end
-
-                -- Auto Height Fix
-                local recordedHip = frame.HIP or 2
-                local currentHip = Hum.HipHeight
-                if currentHip <= 0 then currentHip = 2 end
-                local heightDiff = currentHip - recordedHip
-                
-                local posX = frame.POS.x
-                local posY = frame.POS.y + heightDiff
-                local posZ = frame.POS.z
-                local rotY = frame.ROT or 0
-                
-                -- Update CFrame dengan Flip Offset
-                if isClimbing then
-                    Root.CFrame = CFrame.new(posX, posY, posZ) * CFrame.Angles(0, rotY + Config.FlipOffset, 0)
-                    Hum.AutoRotate = true
-                else
-                    Root.CFrame = CFrame.new(posX, posY, posZ) * CFrame.Angles(0, rotY + Config.FlipOffset, 0)
-                    Hum.AutoRotate = false
-                end
-
-                -- Terapkan Velocity
-                if frame.VEL then
-                    local vel = Vector3.new(frame.VEL.x, frame.VEL.y, frame.VEL.z)
-                    
-                    if isClimbing then
-                        Root.AssemblyLinearVelocity = vel * Config.SpeedMultiplier * 0.8
-                    else
-                        Root.AssemblyLinearVelocity = vel * Config.SpeedMultiplier
-                    end
-                else
-                    Root.AssemblyLinearVelocity = Vector3.zero
-                end
-                
-                -- Override State
-                if frame.STA then
-                    local s = frame.STA
-                    if s == "Jumping" then
-                        Hum:ChangeState(Enum.HumanoidStateType.Jumping)
-                        Hum.Jump = true
-                    elseif s == "Freefall" then
-                        Hum:ChangeState(Enum.HumanoidStateType.Freefall)
-                    elseif s == "Landed" then
-                        Hum:ChangeState(Enum.HumanoidStateType.Landed)
-                    elseif s == "Climbing" then
-                        Hum:ChangeState(Enum.HumanoidStateType.Climbing)
-                    elseif s == "Running" or s == "RunningNoPhysics" then
-                        Hum:ChangeState(Enum.HumanoidStateType.Running)
-                    end
-                else
-                    if not isClimbing then
-                        Hum:ChangeState(Enum.HumanoidStateType.Running)
-                    end
-                end
-
-                RunService.Heartbeat:Wait()
-            end
-            if Config.isPlaying then Config.SavedFrame = 1 end
-        end
-
-        if Config.isPlaying then
-            if Config.isLooping then
-                Config.SavedCP = 0
-                Config.SavedFrame = 1
-            else
-                Config.isPlaying = false
-                Config.SavedCP = 0
-                Config.SavedFrame = 1
-                Core.ResetCharacter()
-                break
-            end
-        else
-            break
-        end
-    end
-end
 
 function Core.GetRepoURL(trackName)
     local Config = Core.Config
@@ -388,14 +301,10 @@ function Core.EnableGodMode()
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     if not humanoid then return end
     
-    -- Simpan health asli
     OriginalHealth = humanoid.MaxHealth
-    
-    -- Set health jadi infinite
     humanoid.MaxHealth = math.huge
     humanoid.Health = math.huge
     
-    -- Monitor terus health agar tetap infinite
     if GodModeConnection then GodModeConnection:Disconnect() end
     GodModeConnection = humanoid.HealthChanged:Connect(function()
         if Core.Config.godMode then
@@ -413,13 +322,11 @@ function Core.DisableGodMode()
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     if not humanoid then return end
     
-    -- Disconnect connection
     if GodModeConnection then
         GodModeConnection:Disconnect()
         GodModeConnection = nil
     end
     
-    -- Restore health asli
     if OriginalHealth then
         humanoid.MaxHealth = OriginalHealth
         humanoid.Health = OriginalHealth
@@ -453,7 +360,6 @@ end
 -- ================= PLAYER MENU =======================
 -- =====================================================
 
--- WalkSpeed Manager
 Core.SetWalkSpeed = function(speed)
     local character = LocalPlayer.Character
     if character and character:FindFirstChild("Humanoid") then
@@ -464,12 +370,10 @@ Core.SetWalkSpeed = function(speed)
     return false
 end
 
--- Restore default walkspeed
 Core.ResetWalkSpeed = function()
     return Core.SetWalkSpeed(Core.Config.PlayerMenu.WalkSpeed.Default)
 end
 
--- Infinite Jump Manager
 Core.InfiniteJump = {
     Connection = nil,
     Enabled = false,
@@ -502,7 +406,6 @@ Core.InfiniteJump = {
     end
 }
 
--- Full Bright Manager
 Core.FullBright = {
     Enabled = false,
     
@@ -513,7 +416,6 @@ Core.FullBright = {
         
         local Lighting = game:GetService("Lighting")
         
-        -- Save original settings (hanya sekali)
         if not Core.Config.PlayerMenu.OriginalLighting.Brightness then
             Core.Config.PlayerMenu.OriginalLighting = {
                 Brightness = Lighting.Brightness,
@@ -524,14 +426,12 @@ Core.FullBright = {
             }
         end
         
-        -- Apply full bright
         Lighting.Brightness = Core.Config.PlayerMenu.FullBrightIntensity
         Lighting.Ambient = Color3.fromRGB(255, 255, 255)
         Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
         Lighting.ClockTime = 14
         Lighting.FogEnd = 100000
         
-        -- Disable visual effects
         for _, v in pairs(Lighting:GetChildren()) do
             pcall(function()
                 if v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or 
@@ -551,7 +451,6 @@ Core.FullBright = {
         local Lighting = game:GetService("Lighting")
         local original = Core.Config.PlayerMenu.OriginalLighting
         
-        -- Restore original settings
         if original.Brightness then
             Lighting.Brightness = original.Brightness
             Lighting.Ambient = original.Ambient
@@ -560,7 +459,6 @@ Core.FullBright = {
             Lighting.FogEnd = original.FogEnd
         end
         
-        -- Re-enable visual effects
         for _, v in pairs(Lighting:GetChildren()) do
             pcall(function()
                 if v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or 
@@ -573,7 +471,6 @@ Core.FullBright = {
     end
 }
 
--- FPS Booster Manager
 Core.FPSBooster = {
     Enabled = false,
     
@@ -582,12 +479,10 @@ Core.FPSBooster = {
         Core.FPSBooster.Enabled = true
         Core.Config.PlayerMenu.FPSBooster = true
         
-        local decalsyeeted = true
         local workspace = game.Workspace
         local lighting = game.Lighting
         local terrain = workspace.Terrain
         
-        -- Apply FPS boost settings
         pcall(function()
             sethiddenproperty(lighting, "Technology", Enum.Technology.Compatibility)
             sethiddenproperty(terrain, "Decoration", false)
@@ -602,13 +497,12 @@ Core.FPSBooster = {
         lighting.Brightness = 0
         settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
         
-        -- Optimize all parts and effects
         for _, v in pairs(game:GetDescendants()) do
             pcall(function()
                 if v:IsA("Part") or v:IsA("Union") or v:IsA("CornerWedgePart") or v:IsA("TrussPart") then
                     v.Material = Enum.Material.Plastic
                     v.Reflectance = 0
-                elseif v:IsA("Decal") or v:IsA("Texture") and decalsyeeted then
+                elseif v:IsA("Decal") or v:IsA("Texture") then
                     v.Transparency = 1
                 elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
                     v.Lifetime = NumberRange.new(0)
@@ -625,7 +519,6 @@ Core.FPSBooster = {
             end)
         end
         
-        -- Disable lighting effects
         for _, e in pairs(lighting:GetChildren()) do
             pcall(function()
                 if e:IsA("BlurEffect") or e:IsA("SunRaysEffect") or 
@@ -640,15 +533,9 @@ Core.FPSBooster = {
     Disable = function()
         Core.FPSBooster.Enabled = false
         Core.Config.PlayerMenu.FPSBooster = false
-        -- Note: Graphics can't be fully restored without rejoining
     end
 }
 
--- =====================================================
--- ================= UTILITY FUNCTIONS =================
--- =====================================================
-
--- Reset all player menu features
 Core.ResetPlayerMenu = function()
     Core.InfiniteJump.Disable()
     Core.FullBright.Disable()
@@ -664,7 +551,6 @@ Core.ResetPlayerMenu = function()
     end
 end
 
--- Get current player menu status
 Core.GetPlayerMenuStatus = function()
     return {
         WalkSpeed = Core.Config.PlayerMenu.WalkSpeed.Current,
@@ -686,7 +572,6 @@ Core.Controller = {
     IsDefault = false
 }
 
--- Utility Functions
 local function stopAllTracks()
     for _, track in pairs(Core.Controller.Tracks) do
         pcall(function()
@@ -710,7 +595,6 @@ local function cleanup()
     Core.Controller.State = "Idle"
 end
 
--- Character / Humanoid
 local function getCharacter()
     return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 end
@@ -723,7 +607,6 @@ local function getAnimator(humanoid)
     return humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
 end
 
--- Default Restore
 function Core.RestoreDefault()
     cleanup()
     Core.Controller.Preset = nil
@@ -732,7 +615,6 @@ function Core.RestoreDefault()
     local char = getCharacter()
     local humanoid = getHumanoid(char)
 
-    -- stop all custom tracks
     local animator = humanoid:FindFirstChildOfClass("Animator")
     if animator then
         for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
@@ -743,7 +625,6 @@ function Core.RestoreDefault()
         end
     end
 
-    -- restore Animate script
     local animate = char:FindFirstChild("Animate")
     if not animate then
         local defaultAnimate = Players:GetHumanoidDescriptionFromUserId(LocalPlayer.UserId)
@@ -751,11 +632,9 @@ function Core.RestoreDefault()
     end
 end
 
--- Apply Preset
 function Core.ApplyPreset(preset)
     if not preset then return end
 
-    -- DEFAULT
     if preset.__DEFAULT then
         Core.RestoreDefault()
         return
@@ -771,11 +650,9 @@ function Core.ApplyPreset(preset)
     local root = char:WaitForChild("HumanoidRootPart")
     local animator = getAnimator(humanoid)
 
-    -- remove Roblox Animate
     local animate = char:FindFirstChild("Animate")
     if animate then animate:Destroy() end
 
-    -- Load Track
     local function load(id)
         if not id then return nil end
         local anim = Instance.new("Animation")
@@ -798,7 +675,6 @@ function Core.ApplyPreset(preset)
         Core.Controller.State = "Idle"
     end
 
-    -- State Loop (Anti Bug)
     Core.Controller.Connections.Heartbeat =
         RunService.Heartbeat:Connect(function()
             if humanoid.Health <= 0 then return end
@@ -831,7 +707,6 @@ function Core.ApplyPreset(preset)
         end)
 end
 
--- Respawn Safe
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(1)
     if Core.Controller.Preset then
@@ -855,7 +730,6 @@ function Core.ApplySkybox(skyName)
         return false
     end
     
-    -- Simpan original sky jika belum
     if not OriginalSky then
         local existingSky = Lighting:FindFirstChildOfClass("Sky")
         if existingSky then
@@ -863,10 +737,8 @@ function Core.ApplySkybox(skyName)
         end
     end
     
-    -- Hapus skybox yang ada
     Core.RemoveSkybox()
     
-    -- Buat skybox baru
     local sky = Instance.new("Sky")
     sky.Name = "CustomSkybox"
     sky.SkyboxBk = preset.SkyboxBk
@@ -887,7 +759,6 @@ end
 function Core.RemoveSkybox()
     local Lighting = game:GetService("Lighting")
     
-    -- Hapus custom skybox
     local customSky = Lighting:FindFirstChild("CustomSkybox")
     if customSky then
         customSky:Destroy()
@@ -897,7 +768,6 @@ function Core.RemoveSkybox()
     Core.Config.Skybox.Current = "None"
     Core.Config.Skybox.Active = false
     
-    -- Restore original sky jika ada
     if OriginalSky then
         local existingSky = Lighting:FindFirstChildOfClass("Sky")
         if existingSky then
@@ -910,9 +780,8 @@ function Core.RemoveSkybox()
     return true
 end
 
--- Reset skybox saat respawn
 LocalPlayer.CharacterAdded:Connect(function()
-    if Core.Config.Skybox.Active then
+    if Core.Config and Core.Config.Skybox.Active then
         task.wait(0.5)
         Core.ApplySkybox(Core.Config.Skybox.Current)
     end
