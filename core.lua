@@ -133,21 +133,20 @@ function Core.RunPlayback()
     local Char = LocalPlayer.Character
     local Hum = Char:FindFirstChild("Humanoid")
     local Root = Char:FindFirstChild("HumanoidRootPart")
-    
-    -- ✅ SYNC WALKSPEED DI AWAL PLAYBACK
-    if Hum then
-        Hum.WalkSpeed = 16 * Config.SpeedMultiplier
-    end
+
+    -- ✅ ACCUMULATOR SYSTEM
+    local accumulator = 0
+    local baseFrameTime = 0.03 -- 30 FPS default
+    local lastFrameTime = tick()
 
     while Config.isPlaying do
         Root.Anchored = false
         Hum.PlatformStand = false
         Hum.AutoRotate = false
         
-        -- ✅ UPDATE WALKSPEED SETIAP LOOP (REALTIME)
-        if Hum then
-            Hum.WalkSpeed = 16 * Config.SpeedMultiplier
-        end
+        -- ✅ Update WalkSpeed untuk animasi
+        local speedMultiplier = Config.SpeedMultiplier or 1
+        Hum.WalkSpeed = 16 * speedMultiplier
         
         for i = Config.SavedCP, #Config.TASDataCache do
             if not Config.isPlaying then break end
@@ -157,11 +156,132 @@ function Core.RunPlayback()
             
             for f = Config.SavedFrame, #data do
                 if not Config.isPlaying then break end
+                
+                -- ✅ ACCUMULATOR LOGIC
+                local currentTime = tick()
+                local deltaTime = currentTime - lastFrameTime
+                lastFrameTime = currentTime
+                
+                -- Tambah accumulator berdasarkan speed multiplier
+                accumulator = accumulator + (deltaTime * speedMultiplier)
+                
+                -- Skip frame jika accumulator belum cukup
+                if accumulator < baseFrameTime then
+                    task.wait()
+                    continue
+                end
+                
+                -- Reset accumulator setelah frame diproses
+                accumulator = accumulator - baseFrameTime
+                
+                -- ✅ Proses frame
                 Config.SavedFrame = f
                 local frame = data[f]
                 
                 if not Char or not Root then Config.isPlaying = false break end
 
+                -- Deteksi State Climbing
+                local isClimbing = false
+                if frame.STA then
+                    local s = frame.STA
+                    if s == "Climbing" then
+                        isClimbing = true
+                    end
+                end
+
+                -- Auto Height Fix
+                local recordedHip = frame.HIP or 2
+                local currentHip = Hum.HipHeight
+                if currentHip <= 0 then currentHip = 2 end
+                local heightDiff = currentHip - recordedHip
+                
+                local posX = frame.POS.x
+                local posY = frame.POS.y + heightDiff
+                local posZ = frame.POS.z
+                local rotY = frame.ROT or 0
+                
+                -- Update CFrame dengan Flip Offset
+                if isClimbing then
+                    Root.CFrame = CFrame.new(posX, posY, posZ) * CFrame.Angles(0, rotY + Config.FlipOffset, 0)
+                    Hum.AutoRotate = true
+                else
+                    Root.CFrame = CFrame.new(posX, posY, posZ) * CFrame.Angles(0, rotY + Config.FlipOffset, 0)
+                    Hum.AutoRotate = false
+                end
+
+                -- ✅ Terapkan Velocity dengan Speed Multiplier
+                if frame.VEL then
+                    local vel = Vector3.new(frame.VEL.x, frame.VEL.y, frame.VEL.z)
+                    
+                    if isClimbing then
+                        Root.AssemblyLinearVelocity = vel * speedMultiplier * 0.8
+                    else
+                        Root.AssemblyLinearVelocity = vel * speedMultiplier
+                    end
+                else
+                    Root.AssemblyLinearVelocity = Vector3.zero
+                end
+                
+                -- Override State
+                if frame.STA then
+                    local s = frame.STA
+                    if s == "Jumping" then
+                        Hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                        Hum.Jump = true
+                    elseif s == "Freefall" then
+                        Hum:ChangeState(Enum.HumanoidStateType.Freefall)
+                    elseif s == "Landed" then
+                        Hum:ChangeState(Enum.HumanoidStateType.Landed)
+                    elseif s == "Climbing" then
+                        Hum:ChangeState(Enum.HumanoidStateType.Climbing)
+                    elseif s == "Running" or s == "RunningNoPhysics" then
+                        Hum:ChangeState(Enum.HumanoidStateType.Running)
+                    end
+                else
+                    if not isClimbing then
+                        Hum:ChangeState(Enum.HumanoidStateType.Running)
+                    end
+                end
+
+                RunService.Heartbeat:Wait()
+            end
+            if Config.isPlaying then 
+                Config.SavedFrame = 1
+                accumulator = 0  -- Reset accumulator saat ganti checkpoint
+            end
+        end
+
+        if Config.isPlaying then
+            if Config.isLooping then
+                Config.SavedCP = 0
+                Config.SavedFrame = 1
+                accumulator = 0  -- Reset accumulator saat loop
+                
+                -- ✅ Auto Respawn jika aktif
+                if Config.autoRespawn then
+                    Core.ResetCharacter()
+                    task.wait(0.5)
+                    Char = LocalPlayer.Character
+                    Hum = Char:FindFirstChild("Humanoid")
+                    Root = Char:FindFirstChild("HumanoidRootPart")
+                end
+            else
+                Config.isPlaying = false
+                Config.SavedCP = 0
+                Config.SavedFrame = 1
+                Core.ResetCharacter()
+                break
+            end
+        else
+            break
+        end
+    end
+    
+    -- ✅ Reset speed saat berhenti
+    if Hum then
+        Hum.WalkSpeed = 16
+    end
+end
                 -- Deteksi State Climbing
                 local isClimbing = false
                 if frame.STA then
