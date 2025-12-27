@@ -1,792 +1,113 @@
+-- CORE.LUA (EXC FREEMIUM) -- Ready-to-upload GitHub version -- Integrated with WindUI Auto Walk menu -- Speed system: EXC Playback (frame-skip & slow-motion)
 
--- CORE.LUA - Main Logic Functions (FIXED & OPTIMIZED)
-local Core = {}
+local Players = game:GetService("Players") local RunService = game:GetService("RunService") local HttpService = game:GetService("HttpService")
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local HttpService = game:GetService("HttpService")
+local Core = {} Core.Config = Core.Config or {}
 
-local LocalPlayer = Players.LocalPlayer
+-- ================= CONFIG DEFAULT ================= 
+Core.Config.SpeedMultiplier = Core.Config.SpeedMultiplier or 1 Core.Config.isPlaying = false Core.Config.isLooping = Core.Config.isLooping or false Core.Config.FlipOffset = Core.Config.FlipOffset or 0 Core.Config.SavedCP = Core.Config.SavedCP or 0 Core.Config.SavedFrame = Core.Config.SavedFrame or 1 Core.Config.TASDataCache = Core.Config.TASDataCache or {}
 
--- Ini akan di-set dari main script
-Core.Config = nil
-Core.WindUI = nil
+-- ================= PLAYER =================
+local LocalPlayer = Players.LocalPlayer local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait() local Root = Character:WaitForChild("HumanoidRootPart") local Hum = Character:WaitForChild("Humanoid")
 
--- =====================================================
--- ================= CHARACTER FUNCTIONS ===============
--- =====================================================
+LocalPlayer.CharacterAdded:Connect(function(char) Character = char Root = char:WaitForChild("HumanoidRootPart") Hum = char:WaitForChild("Humanoid") end)
 
-function Core.ResetCharacter()
-    local Char = LocalPlayer.Character
-    if Char then
-        local Hum = Char:FindFirstChild("Humanoid")
-        local Root = Char:FindFirstChild("HumanoidRootPart")
-        if Hum then
-            Hum.PlatformStand = false
-            Hum.AutoRotate = true
-            Hum:ChangeState(Enum.HumanoidStateType.Running)
-        end
-        if Root then
-            Root.Anchored = false
-            Root.AssemblyLinearVelocity = Vector3.zero
-            Root.AssemblyAngularVelocity = Vector3.zero
-        end
-    end
-end
+-- ================= UTIL ================= 
+function Core.ResetCharacter() if Hum then Hum.PlatformStand = false Hum.AutoRotate = true Hum:ChangeState(Enum.HumanoidStateType.Running) end if Root then Root.AssemblyLinearVelocity = Vector3.zero Root.AssemblyAngularVelocity = Vector3.zero end end
 
-function Core.FindClosestPoint()
-    local Config = Core.Config
-    local myPos = LocalPlayer.Character.HumanoidRootPart.Position
-    local bestCP = Config.SavedCP
-    local bestFrame = Config.SavedFrame
-    local bestPos = myPos
-    local minDist = math.huge
-    
-    for i = 0, #Config.TASDataCache do
-        local data = Config.TASDataCache[i]
-        if data then
-            for f = 1, #data, 10 do
-                local frame = data[f]
-                local fPos = Vector3.new(frame.POS.x, frame.POS.y, frame.POS.z)
-                local dist = (myPos - fPos).Magnitude
-                
-                if dist < minDist then
-                    minDist = dist
-                    bestCP = i
-                    bestFrame = f
-                    bestPos = fPos
+-- ================= DATA DOWNLOAD =================
+function Core.DownloadData(baseURL) local cache = {} for i = 0, 100 do if not Core.Config.isPlaying then return false end local url = baseURL .. "/cp_" .. i .. ".json" local ok, res = pcall(function() return game:HttpGet(url) end) if not ok then if i == 0 then return false end break end cache[i] = HttpService:JSONDecode(res) task.wait() end Core.Config.TASDataCache = cache Core.Config.SavedCP = 0 Core.Config.SavedFrame = 1 return true end
+
+-- ================= SPEED API ================= 
+function Core.SetSpeed(v) Core.Config.SpeedMultiplier = math.clamp(v, 0.1, 10) end
+
+-- ================= STOP =================
+function Core.Stop() Core.Config.isPlaying = false task.wait() Core.ResetCharacter() end
+
+-- ================= PLAYBACK =================
+function Core.RunPlayback() if Core.Config.isPlaying then return end Core.Config.isPlaying = true
+
+Hum.AutoRotate = false
+Hum.PlatformStand = false
+
+local dataCache = Core.Config.TASDataCache
+
+while Core.Config.isPlaying do
+    for cp = Core.Config.SavedCP, #dataCache do
+        if not Core.Config.isPlaying then break end
+        Core.Config.SavedCP = cp
+
+        local data = dataCache[cp]
+        if not data then continue end
+
+        for f = Core.Config.SavedFrame, #data do
+            if not Core.Config.isPlaying then break end
+            Core.Config.SavedFrame = f
+
+            local frame = data[f]
+            if not frame then continue end
+
+            local rotY = (frame.ROT or 0) + (Core.Config.FlipOffset or 0)
+
+            Root.CFrame = CFrame.new(
+                frame.POS.x,
+                frame.POS.y,
+                frame.POS.z
+            ) * CFrame.Angles(0, rotY, 0)
+
+            if frame.VEL then
+                Root.AssemblyLinearVelocity = Vector3.new(
+                    frame.VEL.x,
+                    frame.VEL.y,
+                    frame.VEL.z
+                )
+            end
+
+            if frame.STA then
+                local s = frame.STA
+                if s == "Jumping" then Hum:ChangeState(Enum.HumanoidStateType.Jumping) Hum.Jump = true
+                elseif s == "Freefall" then Hum:ChangeState(Enum.HumanoidStateType.Freefall)
+                elseif s == "Landed" then Hum:ChangeState(Enum.HumanoidStateType.Landed)
+                elseif s == "Running" then Hum:ChangeState(Enum.HumanoidStateType.Running)
                 end
             end
-        end
-    end
-    return bestCP, bestFrame, bestPos, minDist
-end
 
-function Core.WalkToTarget(targetPos)
-    local Config = Core.Config
-    local Char = LocalPlayer.Character
-    local Hum = Char:FindFirstChild("Humanoid")
-    local Root = Char:FindFirstChild("HumanoidRootPart")
-    
-    if not Hum or not Root then return end
-    
-    Hum.AutoRotate = true
-    Hum.PlatformStand = false
-    Root.Anchored = false
-    
-    local oldSpeed = Hum.WalkSpeed
-    -- ✅ Gunakan speed multiplier untuk walk to target
-    Hum.WalkSpeed = 60 * (Config.SpeedMultiplier or 1)
-    
-    while Config.isPlaying do
-        local dist = (Root.Position - targetPos).Magnitude
-        if dist < 5 then break end
-        Hum:MoveTo(targetPos)
-        if Root.Position.Y < -50 then Root.CFrame = CFrame.new(targetPos) break end
-        RunService.Heartbeat:Wait()
-    end
-    
-    Hum.WalkSpeed = oldSpeed
-end
-
--- =====================================================
--- ================= TAS DATA FUNCTIONS ================
--- =====================================================
-
-function Core.DownloadData(repoURL)
-    local Config = Core.Config
-    local count = 0
-    Config.TASDataCache = {}
-    
-    for i = 0, Config.END_CP do
-        if not Config.isPlaying then return false end
-        local url = repoURL .. "cp_" .. i .. ".json"
-        
-        local success, response = pcall(function() return game:HttpGet(url) end)
-        
-        if success then
-            local decodeSuccess, data = pcall(function() return HttpService:JSONDecode(response) end)
-            if decodeSuccess then
-                Config.TASDataCache[i] = data
-            end
-        else
-            break
-        end
-        
-        count = count + 1
-        if i % 5 == 0 then RunService.Heartbeat:Wait() end
-    end
-    return count > 0
-end
-
-function Core.RunPlayback()
-    local Config = Core.Config
-    local foundCP, foundFrame, foundPos, dist = Core.FindClosestPoint()
-    if dist > 5 then Core.WalkToTarget(foundPos) end
-    
-    Config.SavedCP = foundCP
-    Config.SavedFrame = foundFrame
-    
-    local Char = LocalPlayer.Character
-    local Hum = Char:FindFirstChild("Humanoid")
-    local Root = Char:FindFirstChild("HumanoidRootPart")
-
-    -- ✅ ACCUMULATOR SYSTEM
-    local accumulator = 0
-    local baseFrameTime = 0.03 -- 30 FPS default
-    local lastFrameTime = tick()
-
-    while Config.isPlaying do
-        Root.Anchored = false
-        Hum.PlatformStand = false
-        Hum.AutoRotate = false
-        
-        -- ✅ Update WalkSpeed untuk animasi
-        local speedMultiplier = Config.SpeedMultiplier or 1
-        Hum.WalkSpeed = 16 * speedMultiplier
-        
-        for i = Config.SavedCP, #Config.TASDataCache do
-            if not Config.isPlaying then break end
-            Config.SavedCP = i
-            local data = Config.TASDataCache[i]
-            if not data then continue end
-            
-            for f = Config.SavedFrame, #data do
-                if not Config.isPlaying then break end
-                
-                -- ✅ ACCUMULATOR LOGIC
-                local currentTime = tick()
-                local deltaTime = currentTime - lastFrameTime
-                lastFrameTime = currentTime
-                
-                -- Tambah accumulator berdasarkan speed multiplier
-                accumulator = accumulator + (deltaTime * speedMultiplier)
-                
-                -- Skip frame jika accumulator belum cukup
-                if accumulator < baseFrameTime then
-                    task.wait()
-                    continue
-                end
-                
-                -- Reset accumulator setelah frame diproses
-                accumulator = accumulator - baseFrameTime
-                
-                -- ✅ Proses frame
-                Config.SavedFrame = f
-                local frame = data[f]
-                
-                if not Char or not Root then Config.isPlaying = false break end
-
-                -- Deteksi State Climbing
-                local isClimbing = false
-                if frame.STA then
-                    local s = frame.STA
-                    if s == "Climbing" then
-                        isClimbing = true
-                    end
-                end
-
-                -- Auto Height Fix
-                local recordedHip = frame.HIP or 2
-                local currentHip = Hum.HipHeight
-                if currentHip <= 0 then currentHip = 2 end
-                local heightDiff = currentHip - recordedHip
-                
-                local posX = frame.POS.x
-                local posY = frame.POS.y + heightDiff
-                local posZ = frame.POS.z
-                local rotY = frame.ROT or 0
-                
-                -- Update CFrame dengan Flip Offset
-                if isClimbing then
-                    Root.CFrame = CFrame.new(posX, posY, posZ) * CFrame.Angles(0, rotY + Config.FlipOffset, 0)
-                    Hum.AutoRotate = true
-                else
-                    Root.CFrame = CFrame.new(posX, posY, posZ) * CFrame.Angles(0, rotY + Config.FlipOffset, 0)
-                    Hum.AutoRotate = false
-                end
-
-                -- ✅ Terapkan Velocity dengan Speed Multiplier
-                if frame.VEL then
-                    local vel = Vector3.new(frame.VEL.x, frame.VEL.y, frame.VEL.z)
-                    
-                    if isClimbing then
-                        Root.AssemblyLinearVelocity = vel * speedMultiplier * 0.8
-                    else
-                        Root.AssemblyLinearVelocity = vel * speedMultiplier
-                    end
-                else
-                    Root.AssemblyLinearVelocity = Vector3.zero
-                end
-                
-                -- Override State
-                if frame.STA then
-                    local s = frame.STA
-                    if s == "Jumping" then
-                        Hum:ChangeState(Enum.HumanoidStateType.Jumping)
-                        Hum.Jump = true
-                    elseif s == "Freefall" then
-                        Hum:ChangeState(Enum.HumanoidStateType.Freefall)
-                    elseif s == "Landed" then
-                        Hum:ChangeState(Enum.HumanoidStateType.Landed)
-                    elseif s == "Climbing" then
-                        Hum:ChangeState(Enum.HumanoidStateType.Climbing)
-                    elseif s == "Running" or s == "RunningNoPhysics" then
-                        Hum:ChangeState(Enum.HumanoidStateType.Running)
-                    end
-                else
-                    if not isClimbing then
-                        Hum:ChangeState(Enum.HumanoidStateType.Running)
-                    end
-                end
-
-                RunService.Heartbeat:Wait()
-            end
-            if Config.isPlaying then 
-                Config.SavedFrame = 1
-                accumulator = 0  -- Reset accumulator saat ganti checkpoint
-            end
-        end
-
-        if Config.isPlaying then
-            if Config.isLooping then
-                Config.SavedCP = 0
-                Config.SavedFrame = 1
-                accumulator = 0  -- Reset accumulator saat loop
-                
-                -- ✅ Auto Respawn jika aktif
-                if Config.autoRespawn then
-                    Core.ResetCharacter()
-                    task.wait(0.5)
-                    Char = LocalPlayer.Character
-                    Hum = Char:FindFirstChild("Humanoid")
-                    Root = Char:FindFirstChild("HumanoidRootPart")
+            -- ===== SPEED SYSTEM =====
+            local speed = Core.Config.SpeedMultiplier or 1
+            if speed >= 1 then
+                if f % math.floor(speed) == 0 then
+                    RunService.Heartbeat:Wait()
                 end
             else
-                Config.isPlaying = false
-                Config.SavedCP = 0
-                Config.SavedFrame = 1
-                Core.ResetCharacter()
-                break
+                local t = tick()
+                while tick() - t < (1/60) / speed do
+                    RunService.Heartbeat:Wait()
+                end
             end
-        else
-            break
+        end
+
+        if Core.Config.isPlaying then
+            Core.Config.SavedFrame = 1
         end
     end
-    
-    -- ✅ Reset speed saat berhenti
-    if Hum then
-        Hum.WalkSpeed = 16
-    end
-end
 
-function Core.GetRepoURL(trackName)
-    local Config = Core.Config
-    if not trackName then return "" end
-    local repoName = string.lower(string.match(trackName, "%S+$"))
-    return string.format("https://raw.githubusercontent.com/%s/%s/%s/", Config.GitHubUser, repoName, Config.Branch)
-end
-
--- =====================================================
--- ================= GOD MODE FUNCTIONS ================
--- =====================================================
-
-local GodModeConnection = nil
-local OriginalHealth = nil
-
-function Core.EnableGodMode()
-    local character = LocalPlayer.Character
-    if not character then return end
-    
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-    
-    OriginalHealth = humanoid.MaxHealth
-    humanoid.MaxHealth = math.huge
-    humanoid.Health = math.huge
-    
-    if GodModeConnection then GodModeConnection:Disconnect() end
-    GodModeConnection = humanoid.HealthChanged:Connect(function()
-        if Core.Config.godMode then
-            humanoid.Health = math.huge
-        end
-    end)
-    
-    print("✅ God Mode Enabled")
-end
-
-function Core.DisableGodMode()
-    local character = LocalPlayer.Character
-    if not character then return end
-    
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-    
-    if GodModeConnection then
-        GodModeConnection:Disconnect()
-        GodModeConnection = nil
-    end
-    
-    if OriginalHealth then
-        humanoid.MaxHealth = OriginalHealth
-        humanoid.Health = OriginalHealth
+    if Core.Config.isLooping then
+        Core.Config.SavedCP = 0
+        Core.Config.SavedFrame = 1
     else
-        humanoid.MaxHealth = 100
-        humanoid.Health = 100
-    end
-    
-    print("❌ God Mode Disabled")
-end
-
--- =====================================================
--- ================= AUTO RESPAWN ======================
--- =====================================================
-
-function Core.AutoRespawn()
-    if not Core.Config.autoRespawn then return end
-    
-    local character = LocalPlayer.Character
-    if character then
-        local humanoid = character:FindFirstChildOfClass("Humanoid")
-        if humanoid and humanoid.Health <= 0 then
-            wait(0.5)
-            LocalPlayer.Character:BreakJoints()
-            wait(Players.RespawnTime + 0.5)
-        end
+        break
     end
 end
 
--- =====================================================
--- ================= PLAYER MENU =======================
--- =====================================================
+Core.Config.isPlaying = false
+Core.Config.SavedCP = 0
+Core.Config.SavedFrame = 1
+Core.ResetCharacter()
 
-Core.SetWalkSpeed = function(speed)
-    local character = LocalPlayer.Character
-    if character and character:FindFirstChild("Humanoid") then
-        character.Humanoid.WalkSpeed = speed
-        Core.Config.PlayerMenu.WalkSpeed.Current = speed
-        return true
-    end
-    return false
 end
 
-Core.ResetWalkSpeed = function()
-    return Core.SetWalkSpeed(Core.Config.PlayerMenu.WalkSpeed.Default)
-end
+-- ================= GOD MODE (OPTIONAL) ================= function Core.EnableGodMode() if Hum then Hum.MaxHealth = math.huge Hum.Health = math.huge end end
 
-Core.InfiniteJump = {
-    Connection = nil,
-    Enabled = false,
-    
-    Enable = function()
-        if Core.InfiniteJump.Enabled then return end
-        Core.InfiniteJump.Enabled = true
-        Core.Config.PlayerMenu.InfiniteJump = true
-        
-        local UserInputService = game:GetService("UserInputService")
-        
-        Core.InfiniteJump.Connection = UserInputService.JumpRequest:Connect(function()
-            if Core.InfiniteJump.Enabled then
-                local character = LocalPlayer.Character
-                if character and character:FindFirstChild("Humanoid") then
-                    character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-                end
-            end
-        end)
-    end,
-    
-    Disable = function()
-        Core.InfiniteJump.Enabled = false
-        Core.Config.PlayerMenu.InfiniteJump = false
-        
-        if Core.InfiniteJump.Connection then
-            Core.InfiniteJump.Connection:Disconnect()
-            Core.InfiniteJump.Connection = nil
-        end
-    end
-}
-
-Core.FullBright = {
-    Enabled = false,
-    
-    Enable = function()
-        if Core.FullBright.Enabled then return end
-        Core.FullBright.Enabled = true
-        Core.Config.PlayerMenu.FullBright = true
-        
-        local Lighting = game:GetService("Lighting")
-        
-        if not Core.Config.PlayerMenu.OriginalLighting.Brightness then
-            Core.Config.PlayerMenu.OriginalLighting = {
-                Brightness = Lighting.Brightness,
-                Ambient = Lighting.Ambient,
-                OutdoorAmbient = Lighting.OutdoorAmbient,
-                ClockTime = Lighting.ClockTime,
-                FogEnd = Lighting.FogEnd
-            }
-        end
-        
-        Lighting.Brightness = Core.Config.PlayerMenu.FullBrightIntensity
-        Lighting.Ambient = Color3.fromRGB(255, 255, 255)
-        Lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
-        Lighting.ClockTime = 14
-        Lighting.FogEnd = 100000
-        
-        for _, v in pairs(Lighting:GetChildren()) do
-            pcall(function()
-                if v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or 
-                   v:IsA("ColorCorrectionEffect") or v:IsA("BloomEffect") or 
-                   v:IsA("Atmosphere") then
-                    v.Enabled = false
-                end
-            end)
-        end
-    end,
-    
-    Disable = function()
-        if not Core.FullBright.Enabled then return end
-        Core.FullBright.Enabled = false
-        Core.Config.PlayerMenu.FullBright = false
-        
-        local Lighting = game:GetService("Lighting")
-        local original = Core.Config.PlayerMenu.OriginalLighting
-        
-        if original.Brightness then
-            Lighting.Brightness = original.Brightness
-            Lighting.Ambient = original.Ambient
-            Lighting.OutdoorAmbient = original.OutdoorAmbient
-            Lighting.ClockTime = original.ClockTime
-            Lighting.FogEnd = original.FogEnd
-        end
-        
-        for _, v in pairs(Lighting:GetChildren()) do
-            pcall(function()
-                if v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or 
-                   v:IsA("ColorCorrectionEffect") or v:IsA("BloomEffect") or 
-                   v:IsA("Atmosphere") then
-                    v.Enabled = true
-                end
-            end)
-        end
-    end
-}
-
-Core.FPSBooster = {
-    Enabled = false,
-    
-    Enable = function()
-        if Core.FPSBooster.Enabled then return end
-        Core.FPSBooster.Enabled = true
-        Core.Config.PlayerMenu.FPSBooster = true
-        
-        local workspace = game.Workspace
-        local lighting = game.Lighting
-        local terrain = workspace.Terrain
-        
-        pcall(function()
-            sethiddenproperty(lighting, "Technology", Enum.Technology.Compatibility)
-            sethiddenproperty(terrain, "Decoration", false)
-        end)
-        
-        terrain.WaterWaveSize = 0
-        terrain.WaterWaveSpeed = 0
-        terrain.WaterReflectance = 0
-        terrain.WaterTransparency = 0
-        lighting.GlobalShadows = false
-        lighting.FogEnd = 9e9
-        lighting.Brightness = 0
-        settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-        
-        for _, v in pairs(game:GetDescendants()) do
-            pcall(function()
-                if v:IsA("Part") or v:IsA("Union") or v:IsA("CornerWedgePart") or v:IsA("TrussPart") then
-                    v.Material = Enum.Material.Plastic
-                    v.Reflectance = 0
-                elseif v:IsA("Decal") or v:IsA("Texture") then
-                    v.Transparency = 1
-                elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
-                    v.Lifetime = NumberRange.new(0)
-                elseif v:IsA("Explosion") then
-                    v.BlastPressure = 1
-                    v.BlastRadius = 1
-                elseif v:IsA("Fire") or v:IsA("SpotLight") or v:IsA("Smoke") or v:IsA("Sparkles") then
-                    v.Enabled = false
-                elseif v:IsA("MeshPart") then
-                    v.Material = Enum.Material.Plastic
-                    v.Reflectance = 0
-                    v.TextureID = ""
-                end
-            end)
-        end
-        
-        for _, e in pairs(lighting:GetChildren()) do
-            pcall(function()
-                if e:IsA("BlurEffect") or e:IsA("SunRaysEffect") or 
-                   e:IsA("ColorCorrectionEffect") or e:IsA("BloomEffect") or 
-                   e:IsA("DepthOfFieldEffect") then
-                    e.Enabled = false
-                end
-            end)
-        end
-    end,
-    
-    Disable = function()
-        Core.FPSBooster.Enabled = false
-        Core.Config.PlayerMenu.FPSBooster = false
-    end
-}
-
-Core.ResetPlayerMenu = function()
-    Core.InfiniteJump.Disable()
-    Core.FullBright.Disable()
-    Core.FPSBooster.Disable()
-    Core.ResetWalkSpeed()
-    
-    if Core.WindUI then
-        Core.WindUI:Notify({
-            Title = "Reset", 
-            Content = "All player features reset", 
-            Duration = 2
-        })
-    end
-end
-
-Core.GetPlayerMenuStatus = function()
-    return {
-        WalkSpeed = Core.Config.PlayerMenu.WalkSpeed.Current,
-        InfiniteJump = Core.Config.PlayerMenu.InfiniteJump,
-        FullBright = Core.Config.PlayerMenu.FullBright,
-        FPSBooster = Core.Config.PlayerMenu.FPSBooster
-    }
-end
-
--- =====================================================
--- ================= ANIMATION SYSTEM ==================
--- =====================================================
-
-Core.Controller = {
-    Tracks = {},
-    Connections = {},
-    State = "Idle",
-    Preset = nil,
-    IsDefault = false
-}
-
-local function stopAllTracks()
-    for _, track in pairs(Core.Controller.Tracks) do
-        pcall(function()
-            track:Stop(0.15)
-            track:Destroy()
-        end)
-    end
-    Core.Controller.Tracks = {}
-end
-
-local function disconnectAll()
-    for _, c in pairs(Core.Controller.Connections) do
-        pcall(function() c:Disconnect() end)
-    end
-    Core.Controller.Connections = {}
-end
-
-local function cleanup()
-    stopAllTracks()
-    disconnectAll()
-    Core.Controller.State = "Idle"
-end
-
-local function getCharacter()
-    return LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-end
-
-local function getHumanoid(char)
-    return char:WaitForChild("Humanoid")
-end
-
-local function getAnimator(humanoid)
-    return humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
-end
-
-function Core.RestoreDefault()
-    cleanup()
-    Core.Controller.Preset = nil
-    Core.Controller.IsDefault = true
-
-    local char = getCharacter()
-    local humanoid = getHumanoid(char)
-
-    local animator = humanoid:FindFirstChildOfClass("Animator")
-    if animator then
-        for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-            pcall(function()
-                track:Stop(0)
-                track:Destroy()
-            end)
-        end
-    end
-
-    local animate = char:FindFirstChild("Animate")
-    if not animate then
-        local defaultAnimate = Players:GetHumanoidDescriptionFromUserId(LocalPlayer.UserId)
-        humanoid:ApplyDescription(defaultAnimate)
-    end
-end
-
-function Core.ApplyPreset(preset)
-    if not preset then return end
-
-    if preset.__DEFAULT then
-        Core.RestoreDefault()
-        return
-    end
-
-    cleanup()
-
-    Core.Controller.Preset = preset
-    Core.Controller.IsDefault = false
-
-    local char = getCharacter()
-    local humanoid = getHumanoid(char)
-    local root = char:WaitForChild("HumanoidRootPart")
-    local animator = getAnimator(humanoid)
-
-    local animate = char:FindFirstChild("Animate")
-    if animate then animate:Destroy() end
-
-    local function load(id)
-        if not id then return nil end
-        local anim = Instance.new("Animation")
-        anim.AnimationId = id
-        local track = animator:LoadAnimation(anim)
-        track.Priority = Enum.AnimationPriority.Movement
-        return track
-    end
-
-    Core.Controller.Tracks = {
-        Idle = load(preset.Idle),
-        Walk = load(preset.Walk),
-        Run  = load(preset.Run),
-        Jump = load(preset.Jump),
-        Fall = load(preset.Fall)
-    }
-
-    if Core.Controller.Tracks.Idle then
-        Core.Controller.Tracks.Idle:Play(0.2)
-        Core.Controller.State = "Idle"
-    end
-
-    Core.Controller.Connections.Heartbeat =
-        RunService.Heartbeat:Connect(function()
-            if humanoid.Health <= 0 then return end
-
-            local velocity = Vector3.new(root.Velocity.X, 0, root.Velocity.Z).Magnitude
-            local state = humanoid:GetState()
-
-            local function switch(name)
-                if Core.Controller.State == name then return end
-                for k, t in pairs(Core.Controller.Tracks) do
-                    if k ~= name and t then t:Stop(0.15) end
-                end
-                if Core.Controller.Tracks[name] then
-                    Core.Controller.Tracks[name]:Play(0.15)
-                    Core.Controller.State = name
-                end
-            end
-
-            if state == Enum.HumanoidStateType.Jumping then
-                switch("Jump")
-            elseif state == Enum.HumanoidStateType.Freefall then
-                switch("Fall")
-            elseif velocity > 14 then
-                switch("Run")
-            elseif velocity > 1 then
-                switch("Walk")
-            else
-                switch("Idle")
-            end
-        end)
-end
-
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(1)
-    if Core.Controller.Preset then
-        Core.ApplyPreset(Core.Controller.Preset)
-    end
-end)
-
--- =====================================================
--- ================= SKYBOX FUNCTIONS ==================
--- =====================================================
-
-local OriginalSky = nil
-local CurrentSkybox = nil
-
-function Core.ApplySkybox(skyName)
-    local Lighting = game:GetService("Lighting")
-    local preset = Core.Config.Skybox.Presets[skyName]
-    
-    if not preset then
-        warn("Sky preset not found: " .. skyName)
-        return false
-    end
-    
-    if not OriginalSky then
-        local existingSky = Lighting:FindFirstChildOfClass("Sky")
-        if existingSky then
-            OriginalSky = existingSky:Clone()
-        end
-    end
-    
-    Core.RemoveSkybox()
-    
-    local sky = Instance.new("Sky")
-    sky.Name = "CustomSkybox"
-    sky.SkyboxBk = preset.SkyboxBk
-    sky.SkyboxDn = preset.SkyboxDn
-    sky.SkyboxFt = preset.SkyboxFt
-    sky.SkyboxLf = preset.SkyboxLf
-    sky.SkyboxRt = preset.SkyboxRt
-    sky.SkyboxUp = preset.SkyboxUp
-    sky.Parent = Lighting
-    
-    CurrentSkybox = sky
-    Core.Config.Skybox.Current = skyName
-    Core.Config.Skybox.Active = true
-    
-    return true
-end
-
-function Core.RemoveSkybox()
-    local Lighting = game:GetService("Lighting")
-    
-    local customSky = Lighting:FindFirstChild("CustomSkybox")
-    if customSky then
-        customSky:Destroy()
-    end
-    
-    CurrentSkybox = nil
-    Core.Config.Skybox.Current = "None"
-    Core.Config.Skybox.Active = false
-    
-    if OriginalSky then
-        local existingSky = Lighting:FindFirstChildOfClass("Sky")
-        if existingSky then
-            existingSky:Destroy()
-        end
-        local restoredSky = OriginalSky:Clone()
-        restoredSky.Parent = Lighting
-    end
-    
-    return true
-end
-
-LocalPlayer.CharacterAdded:Connect(function()
-    if Core.Config and Core.Config.Skybox.Active then
-        task.wait(0.5)
-        Core.ApplySkybox(Core.Config.Skybox.Current)
-    end
-end)
-
-print("✅ CORE.LUA - All Systems Ready")
+function Core.DisableGodMode() if Hum then Hum.MaxHealth = 100 Hum.Health = math.clamp(Hum.Health, 0, 100) end end
 
 return Core
